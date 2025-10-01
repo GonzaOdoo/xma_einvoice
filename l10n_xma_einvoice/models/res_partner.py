@@ -124,5 +124,5 @@ class ResPartner(models.Model):
     
     l10n_xma_fiscal_unit_code = fields.Char(string="Codigo de la unidad fiscal") 
     l10n_xma_colony_code = fields.Char(
-        string='Código de la colonia',
+        string='Codigo de la colonia',
     )
