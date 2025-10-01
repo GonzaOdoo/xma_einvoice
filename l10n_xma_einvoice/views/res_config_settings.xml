@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_matrix_settings_inherit"  model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.matrix.settings.inherit</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="90"/>
+        <field name="inherit_id" ref="xma_core.res_config_settings_view_form_matrix_settings"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='xmarts_settings']/block[@name='l10n_xma_test_fields']" position="inside">
+                <setting string="Configuracion de Descuento" company_dependent="1" help="Active si desea usar el descuento por precio">
+                    <div class="text-muted">
+                        <field name="l10n_xma_use_discount_for_price" help="Active si desea usar el descuento por precio"/>
+                    </div>
+                </setting>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- View wizard.test form -->
+    <record id="view_wizard_cancel_form" model="ir.ui.view">
+        <field name="name">view.wizard.cancel.form</field>
+        <field name="model">wizard.cancel</field>
+        <field name="arch" type="xml">
+            <form string="Cancelar">
+                <group>
+                    <group>                    
+                        <field name="account_id" invisible="1"/>
+                        <field name="l10n_xma_uuid_invoice"/>
+                        <field name="l10n_xma_reason_cancellation" required="1"/>
+                        <field name="l10n_xma_uuid_related"
+                            invisible="l10n_xma_reason_cancellation != '01'"
+                            required="l10n_xma_reason_cancellation == '01'"/>
+                    </group>
+
+                </group>
+                <footer>
+                    <button name="action_cancel" type="object" string="Ejecutar" class="oe_highlight"/>
+                    <button special="cancel" string="Cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>
