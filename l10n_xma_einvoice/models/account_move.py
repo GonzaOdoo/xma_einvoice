@@ -3,7 +3,7 @@ from odoo import fields, models, api, _
 import json
 from lxml.objectify import fromstring
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from odoo.tools import float_round
 from odoo.exceptions import UserError, ValidationError
 import time
@@ -17,6 +17,7 @@ from num2words import num2words
 from MqttLibPy.client import MqttClient
 import logging
 import re
+# from datetime import date
 _logger = logging.getLogger(__name__)
 
 class AccountMoveLine(models.Model):
@@ -802,6 +803,11 @@ class AccountMove(models.Model):
 
     def generate_cdc(self):
         newNumCDC = ''
+        if not self.l10n_xma_uuid_invoice:
+            cdc = self.get_cdc_from_xml()
+            self.l10n_xma_uuid_invoice = cdc
+        if not self.l10n_xma_date_post:
+            self.get_date_emi_from_xml()
         for i in range(0, len(self.l10n_xma_uuid_invoice), 4):
             newNumCDC += self.l10n_xma_uuid_invoice[i:i + 4] + " "
 
@@ -847,6 +853,30 @@ class AccountMove(models.Model):
                 Test = doc.getElementsByTagName("dCarQR")[0]
                 print(Test.firstChild.data)
                 return Test.firstChild.data
+    
+
+    def get_date_emi_from_xml(self, py_xml=None):
+        for rec in self:
+            if rec.l10n_xma_xml_ar:
+                stream = BytesIO(base64.b64decode(rec.l10n_xma_xml_ar))
+                doc = minidom.parse(stream)
+                date_emi = doc.getElementsByTagName("dFecFirma")[0]
+                date_str = date_emi.firstChild.data  # formato "2025-10-10T11:16:37"
+                date_odoo = fields.Datetime.from_string(date_str)
+                # Ahora puedes asignar date_odoo a tu campo datetime en Odoo
+                rec.l10n_xma_date_post = date_odoo  # fecha_odoo es tu campo datetime
+                    # return Test.firstChild.data
+    @api.model
+    def get_cdc_from_xml(self, py_xml=None):
+        for rec in self:
+            if rec.l10n_xma_xml_ar:
+                stream = BytesIO(base64.b64decode(rec.l10n_xma_xml_ar))
+                tree = ET.parse(stream)
+                root = tree.getroot()
+                namespace = "{http://ekuatia.set.gov.py/sifen/xsd}"
+                de_element = root.find(f".//{namespace}DE")
+                id_de = de_element.attrib["Id"]
+                return id_de
 
     def get_company(self):
         company_id = self.env['res.company'].sudo().search([("company_name", "!=", "")], limit=1)
@@ -1428,10 +1458,16 @@ class AccountMove(models.Model):
         )
 
         self.l10n_xma_sif_status = 'sign'
-        time.sleep(12)
+        time.sleep(8)
         self.refresh_account_move_xma()
+        msj = "Su factura a sido enviada, queda en espera de validación y autorización por parte de SIFEN, esto puede demorar unos minutos"
+        self.message_post(body=msj, body_is_html=True, message_type='comment', subtype_xmlid='mail.mt_comment')
+
 
     def consult_invoice_statur(self):
+        if not self.l10n_xma_uuid_invoice:
+            cdc = self.get_cdc_from_xml()
+            self.l10n_xma_uuid_invoice = cdc
         company = self.get_company()
         uuid = company.company_name
         rfc = self.company_id.partner_id.vat
@@ -1511,13 +1547,12 @@ class AccountMove(models.Model):
     #     return iva
     def calculate_liq_iva(self, lines):
         tax_rate = 0
-        tax_name = lines.tax_ids.l10n_xma_edi_tax_type_id.name
-        
-        if 'IVA' in tax_name:
-            tax_rate = float(tax_name.split('IVA ')[1].replace('%', '')) / 100
+        for tax in lines.tax_ids:
+            if tax.amount_type == 'percent':
+                tax_rate = tax.amount / 100
         
         if tax_rate > 0:
-            iva = lines.price_total - (lines.price_total / (1 + tax_rate))
+            iva = round(lines.price_total - (lines.price_total / (1 + tax_rate)), 2)
         else:
             iva = 0
         
@@ -1690,15 +1725,56 @@ class AccountMove(models.Model):
                 }
         
         cambio = 0
-        if self.currency_id.name != 'PYG':
+        # if self.currency_id.name != 'PYG':
             
+        #     id_moneda = self.env['res.currency'].search([
+        #         ('name', '=', self.currency_id.name)
+        #     ])
+        #     ti_cambio = self.env['res.currency.rate'].search([
+        #         ('currency_id', '=', id_moneda.id)
+        #     ], order= "id desc", limit=1)
+        #     cambio = ti_cambio.inverse_company_rate
+
+        if self.currency_id.name != 'PYG':
             id_moneda = self.env['res.currency'].search([
                 ('name', '=', self.currency_id.name)
             ])
-            ti_cambio = self.env['res.currency.rate'].search([
-                ('currency_id', '=', id_moneda.id)
-            ], order= "id desc", limit=1)
-            cambio = ti_cambio.inverse_company_rate
+            
+            # Buscar tipo de cambio con fecha de la factura
+            fecha_factura = self.date  # Reemplaza self.date con el campo real que almacena la fecha de la factura
+            ti_cambio_fecha = self.env['res.currency.rate'].search([
+                ('currency_id', '=', id_moneda.id),
+                ('company_id', '=', self.company_id.id),
+                ('name', '=', fecha_factura)
+            ], order="id desc", limit=1)
+            
+            # Si no se encontró tipo de cambio con fecha de la factura, buscar con fecha del día
+            if not ti_cambio_fecha:
+                ti_cambio_hoy = self.env['res.currency.rate'].search([
+                    ('currency_id', '=', id_moneda.id),
+                    ('company_id', '=', self.company_id.id),
+                    ('name', '=', date.today())
+                ], order="id desc", limit=1)
+                
+                # Si no se encontró tipo de cambio con fecha del día, buscar el último
+                if not ti_cambio_hoy:
+                    ti_cambio_ultimo = self.env['res.currency.rate'].search([
+                        ('currency_id', '=', id_moneda.id),
+                        ('company_id', '=', self.company_id.id)
+                    ], order="id desc", limit=1)
+                    ti_cambio = ti_cambio_ultimo
+                else:
+                    ti_cambio = ti_cambio_hoy
+            else:
+                ti_cambio = ti_cambio_fecha
+            
+            if ti_cambio:
+                cambio = ti_cambio.inverse_company_rate
+            else:
+                # Manejar el caso en el que no se encontró un tipo de cambio\
+                _logger.info(f"TIPO DE CAMBIO 0")
+                cambio = 0
+        _logger.info(f"TIPO DE CAMBIO FINAL {cambio}")
         if self.currency_id.name != 'PYG':
             iddoc.update({
                 "CodCondicionTipoCambio": 1,
@@ -1998,6 +2074,49 @@ class AccountMove(models.Model):
         }
 
         return json_complete
+
+    def get_currency_rate(self):
+        cambio = 1
+        if self.currency_id.name != 'PYG':
+            id_moneda = self.env['res.currency'].search([
+                ('name', '=', self.currency_id.name)
+            ])
+            
+            # Buscar tipo de cambio con fecha de la factura
+            fecha_factura = self.date  # Reemplaza self.date con el campo real que almacena la fecha de la factura
+            ti_cambio_fecha = self.env['res.currency.rate'].search([
+                ('currency_id', '=', id_moneda.id),
+                ('company_id', '=', self.company_id.id),
+                ('name', '=', fecha_factura)
+            ], order="id desc", limit=1)
+            
+            # Si no se encontró tipo de cambio con fecha de la factura, buscar con fecha del día
+            if not ti_cambio_fecha:
+                ti_cambio_hoy = self.env['res.currency.rate'].search([
+                    ('currency_id', '=', id_moneda.id),
+                    ('company_id', '=', self.company_id.id),
+                    ('name', '=', date.today())
+                ], order="id desc", limit=1)
+                
+                # Si no se encontró tipo de cambio con fecha del día, buscar el último
+                if not ti_cambio_hoy:
+                    ti_cambio_ultimo = self.env['res.currency.rate'].search([
+                        ('currency_id', '=', id_moneda.id),
+                        ('company_id', '=', self.company_id.id)
+                    ], order="id desc", limit=1)
+                    ti_cambio = ti_cambio_ultimo
+                else:
+                    ti_cambio = ti_cambio_hoy
+            else:
+                ti_cambio = ti_cambio_fecha
+            
+            if ti_cambio:
+                cambio = ti_cambio.inverse_company_rate
+            else:
+                # Manejar el caso en el que no se encontró un tipo de cambio\
+                _logger.info(f"TIPO DE CAMBIO 0")
+                cambio = 1
+        return cambio
 
     def delete_none_or_false(self, _dict):
         if isinstance(_dict, dict):

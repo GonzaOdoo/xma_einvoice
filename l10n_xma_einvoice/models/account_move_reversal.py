@@ -7,6 +7,9 @@ from odoo.exceptions import UserError
 class AccountMoveReversal(models.TransientModel):
     _inherit = "account.move.reversal"
 
+    l10n_latam_document_type_id = fields.Many2one('l10n_latam.document.type', 'Document Type', ondelete='cascade', domain="[]", compute='_compute_document_type', readonly=False, store=True)
+    
+
     # def reverse_moves(self, is_modify=False):
     #     self.ensure_one()
     #     res = super(AccountMoveReversal, self).reverse_moves(fields)
@@ -25,6 +28,7 @@ class AccountMoveReversal(models.TransientModel):
                 'l10n_xma_date_document_emision': move.l10n_xma_date_post,
                 'l10n_xma_payment_term': move.l10n_xma_payment_term
             }
+        return {}
 
 
     def _prepare_default_reversal(self, move):
