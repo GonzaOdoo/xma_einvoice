@@ -776,10 +776,10 @@ class AccountMove(models.Model):
             'target': 'new'
         }
 
-    @api.onchange('l10n_xma_date_post')
-    def onchange_l10n_xma_date_post(self):
-        if self.l10n_xma_date_post:
-            self.invoice_date = self.l10n_xma_date_post.date()
+    # @api.onchange('l10n_xma_date_post')
+    # def onchange_l10n_xma_date_post(self):
+    #     if self.l10n_xma_date_post:
+    #         self.invoice_date = self.l10n_xma_date_post.date()
             
 
     def generate_qr(self, url):
@@ -862,10 +862,9 @@ class AccountMove(models.Model):
                 doc = minidom.parse(stream)
                 date_emi = doc.getElementsByTagName("dFecFirma")[0]
                 date_str = date_emi.firstChild.data  # formato "2025-10-10T11:16:37"
-                date_odoo = fields.Datetime.from_string(date_str)
-                # Ahora puedes asignar date_odoo a tu campo datetime en Odoo
-                rec.l10n_xma_date_post = date_odoo  # fecha_odoo es tu campo datetime
-                    # return Test.firstChild.data
+                date_odoo = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+                date_time = fields.Datetime.context_timestamp(self.with_context(tz=self.env.user.tz), date_odoo)
+                rec.l10n_xma_date_post = fields.Datetime.to_string(date_time)
     @api.model
     def get_cdc_from_xml(self, py_xml=None):
         for rec in self:
@@ -1425,14 +1424,12 @@ class AccountMove(models.Model):
         if not self.partner_id.l10n_xma_municipality_id:
             raise ValidationError(_('Error de llenado: Campo "Distrito" en la ficha del cliente es requerido'))
         
-        if not self.partner_id.l10n_xma_municipality_id:
-            raise ValidationError(_('Error de llenado: Campo "Distrito" en la ficha del cliente es requerido'))
         
         if not self.partner_id.email:
             raise ValidationError(_('Error de llenado: Campo "Correo electronico" en la ficha del cliente es requerido'))
         
         if not self.partner_id.l10n_xma_taxpayer_type_id:
-            raise ValidationError(_('Error de llenado: Campo "Distrito" en la ficha del cliente es requerido'))
+            raise ValidationError(_('Error de llenado: Campo "Regimen Fiscal" en la ficha del cliente es requerido'))
         
         # for lines in self.invoice_line_ids:
         #     if not lines.product_id.uom_id.l10n_xma_uomcode_id.code:
@@ -1552,7 +1549,7 @@ class AccountMove(models.Model):
                 tax_rate = tax.amount / 100
         
         if tax_rate > 0:
-            iva = round(lines.price_total - (lines.price_total / (1 + tax_rate)), 2)
+            iva = round(lines.price_total - (lines.price_total / (1 + tax_rate)))
         else:
             iva = 0
         
