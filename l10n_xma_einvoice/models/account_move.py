@@ -1455,8 +1455,8 @@ class AccountMove(models.Model):
         )
 
         self.l10n_xma_sif_status = 'sign'
-        time.sleep(8)
-        self.refresh_account_move_xma()
+        #time.sleep(8)
+        #self.refresh_account_move_xma()
         msj = "Su factura a sido enviada, queda en espera de validación y autorización por parte de SIFEN, esto puede demorar unos minutos"
         self.message_post(body=msj, body_is_html=True, message_type='comment', subtype_xmlid='mail.mt_comment')
 
